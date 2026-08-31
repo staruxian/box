@@ -1,0 +1,9 @@
+.person-row { color: inherit; text-decoration: none; }
+.person-row:hover { background: #fafbf5; }
+input[readonly] { background: #f0f2ea; color: #4f5d3f; font-weight: 800; cursor: default; }
+.table-row em.expense { background: #f6e7d5; color: #9a493c; }
+
+@media (max-width: 720px) {
+  nav { gap: 0; }
+  nav a { padding-inline: 7px; }
+}
