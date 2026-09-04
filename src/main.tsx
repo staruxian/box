@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import App, { Clients, Expenses, Ledger, Overview, PersonProfile, Products, Suppliers } from './App.tsx'
+import App, { Clients, Expenses, Inventory, Ledger, Overview, PersonProfile, Production, Products, Suppliers } from './App.tsx'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -10,6 +10,8 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route element={<App />}>
           <Route index element={<Overview />} />
+          <Route path="inventory" element={<Inventory />} />
+          <Route path="production" element={<Production />} />
           <Route path="clients" element={<Clients />} />
           <Route path="clients/:id" element={<PersonProfile />} />
           <Route path="suppliers" element={<Suppliers />} />
