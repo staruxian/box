@@ -77,6 +77,13 @@ const SCHEMA=`
     material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE RESTRICT,
     quantity REAL NOT NULL CHECK(quantity > 0)
   );
+  CREATE TABLE IF NOT EXISTS stock_intake (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE RESTRICT,
+    quantity REAL NOT NULL CHECK(quantity > 0),
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE INDEX IF NOT EXISTS idx_transactions_person_created ON transactions(client_id,created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_transactions_created ON transactions(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_transactions_material ON transactions(material_id);
@@ -86,6 +93,8 @@ const SCHEMA=`
   CREATE INDEX IF NOT EXISTS idx_runs_created ON production_runs(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inputs_run ON production_inputs(run_id);
   CREATE INDEX IF NOT EXISTS idx_inputs_material ON production_inputs(material_id);
+  CREATE INDEX IF NOT EXISTS idx_intake_material ON stock_intake(material_id);
+  CREATE INDEX IF NOT EXISTS idx_intake_created ON stock_intake(created_at DESC);
 `;
 const SEED:Array<[string,string,number]>=[["kraxmal","Крахмал",1],["color","Краситель",2],["makulatura","Макулатура",3]];
 
@@ -104,12 +113,13 @@ const cents=(v:unknown)=>Math.round(Number(String(v??"").replace(/\s/g,"").repla
 const qty=(n:number)=>String(Number(n.toFixed(3))).replace(".",",");
 const EPSILON=1e-9;
 
-type MaterialRow={id:number;code:string;name:string;unit:string;purchased_qty:number;consumed_qty:number;purchased_cents:number;stock_qty:number};
+type MaterialRow={id:number;code:string;name:string;unit:string;purchased_qty:number;intake_qty:number;consumed_qty:number;purchased_cents:number;stock_qty:number};
 type ProductRow={id:number;name:string;sku:string;units_sold:number;units_produced:number;sale_count:number;stock_qty:number};
 
 const MATERIAL_SQL=`SELECT m.id,m.code,m.name,m.unit,m.sort_order,
   COALESCE((SELECT SUM(t.quantity) FROM transactions t WHERE t.material_id=m.id AND t.kind='purchase'),0) purchased_qty,
   COALESCE((SELECT SUM(t.amount_cents) FROM transactions t WHERE t.material_id=m.id AND t.kind='purchase'),0) purchased_cents,
+  COALESCE((SELECT SUM(a.quantity) FROM stock_intake a WHERE a.material_id=m.id),0) intake_qty,
   COALESCE((SELECT SUM(i.quantity) FROM production_inputs i WHERE i.material_id=m.id),0) consumed_qty
   FROM materials m ORDER BY m.sort_order,m.id`;
 const PRODUCT_SQL=`SELECT p.id,p.name,p.sku,
@@ -117,7 +127,7 @@ const PRODUCT_SQL=`SELECT p.id,p.name,p.sku,
   COALESCE((SELECT SUM(t.quantity) FROM transactions t WHERE t.product_id=p.id AND t.kind='sale'),0) units_sold,
   COALESCE((SELECT SUM(r.output_quantity) FROM production_runs r WHERE r.product_id=p.id),0) units_produced
   FROM products p ORDER BY p.name`;
-const withMaterialStock=(list:MaterialRow[])=>list.map(m=>({...m,stock_qty:m.purchased_qty-m.consumed_qty}));
+const withMaterialStock=(list:MaterialRow[])=>list.map(m=>({...m,stock_qty:m.purchased_qty+m.intake_qty-m.consumed_qty}));
 const withProductStock=(list:ProductRow[])=>list.map(p=>({...p,stock_qty:p.units_produced-p.units_sold}));
 const materialStock=async(ex:Exec=db)=>withMaterialStock(await rowsOn<MaterialRow>(ex,MATERIAL_SQL));
 const productStock=async(ex:Exec=db)=>withProductStock(await rowsOn<ProductRow>(ex,PRODUCT_SQL));
@@ -143,7 +153,7 @@ const idFrom=(url:URL,prefix:string)=>{const m=url.pathname.match(new RegExp(`^/
 
 async function snapshot(){
   // One round trip for the whole page — the database is remote, so batching matters.
-  const [people,materials,products,runs,inputs,transactions,expenses,raw,expenseTotal]=await db.batch([
+  const [people,materials,products,runs,inputs,transactions,expenses,intake,raw,expenseTotal]=await db.batch([
     `SELECT p.*,
       COALESCE(SUM(CASE WHEN t.kind IN ('sale','purchase') THEN -t.amount_cents ELSE t.amount_cents END),0) balance_cents,
       COUNT(t.id) transaction_count
@@ -158,6 +168,8 @@ async function snapshot(){
       FROM transactions t JOIN clients p ON p.id=t.client_id LEFT JOIN products pr ON pr.id=t.product_id LEFT JOIN materials m ON m.id=t.material_id
       ORDER BY datetime(t.created_at) DESC,t.id DESC LIMIT 500`,
     "SELECT * FROM expenses ORDER BY datetime(created_at) DESC,id DESC LIMIT 500",
+    `SELECT a.*,m.name material_name,m.unit FROM stock_intake a JOIN materials m ON m.id=a.material_id
+      ORDER BY datetime(a.created_at) DESC,a.id DESC LIMIT 500`,
     `SELECT
       COALESCE(SUM(CASE WHEN kind='sale' THEN amount_cents ELSE 0 END),0) sales_cents,
       COALESCE(SUM(CASE WHEN kind='client_payment' THEN amount_cents ELSE 0 END),0) client_payments_cents,
@@ -177,9 +189,10 @@ async function snapshot(){
   const expensesTotal=Number((expenseTotal.rows[0] as unknown as {expenses_cents:number}).expenses_cents);
   const clientDebt=peopleList.filter(p=>p.person_type==='client').reduce((sum,p)=>sum+Math.max(0,-Number(p.balance_cents)),0);
   const supplierDebt=peopleList.filter(p=>p.person_type==='supplier').reduce((sum,p)=>sum+Math.max(0,-Number(p.balance_cents)),0);
-  return {people:peopleList,products:productList,materials:materialList,production,transactions:transactions.rows,expenses:expenses.rows,
+  return {people:peopleList,products:productList,materials:materialList,production,transactions:transactions.rows,expenses:expenses.rows,intake:intake.rows,
     totals:{...totals,expenses_cents:expensesTotal,
       my_balance_cents:totals.client_payments_cents-totals.purchases_cents-expensesTotal,client_debt_cents:clientDebt,supplier_debt_cents:supplierDebt,
+      intake_qty:materialList.reduce((s,m)=>s+m.intake_qty,0),
       material_stock_qty:materialList.reduce((s,m)=>s+m.stock_qty,0),finished_stock_qty:productList.reduce((s,p)=>s+p.stock_qty,0),
       produced_qty:productList.reduce((s,p)=>s+p.units_produced,0),sold_qty:productList.reduce((s,p)=>s+p.units_sold,0)}};
 }
@@ -239,6 +252,15 @@ async function buildRun(ex:Exec,b:Record<string,unknown>,skipId=0):Promise<RunFi
       fail(`Недостаточно материала. ${material!.name}: нужно ${qty(i.quantity)} ${material!.unit}, в наличии ${qty(available)} ${material!.unit}`);
   }
   return {productId,output,note:clean(b.note),inputs};
+}
+
+type IntakeFields={materialId:number;quantity:number;note:string};
+async function buildIntake(ex:Exec,b:Record<string,unknown>):Promise<IntakeFields>{
+  const materialId=Number(b.materialId),quantity=Number(b.quantity);
+  if(!materialId)fail("Выберите материал");
+  if(!await oneOn(ex,"SELECT id FROM materials WHERE id=?",[materialId]))fail("Материал не найден",404);
+  if(!Number.isFinite(quantity)||quantity<=0)fail("Укажите количество в кг");
+  return {materialId,quantity,note:clean(b.note)};
 }
 
 async function writeRunInputs(tx:Transaction,runId:number,inputs:RunFields["inputs"]){
@@ -305,7 +327,8 @@ async function api(req:Request,url:URL){
       if(method==="DELETE"){
         const purchases=await countOn(db,"SELECT COUNT(*) c FROM transactions WHERE material_id=?",[materialId]);
         const used=await countOn(db,"SELECT COUNT(*) c FROM production_inputs WHERE material_id=?",[materialId]);
-        if(purchases||used)fail(`Сначала удалите закупки (${purchases}) и партии (${used}) с этим материалом`);
+        const added=await countOn(db,"SELECT COUNT(*) c FROM stock_intake WHERE material_id=?",[materialId]);
+        if(purchases||used||added)fail(`Сначала удалите закупки (${purchases}), поступления (${added}) и партии (${used}) с этим материалом`);
         await db.execute({sql:"DELETE FROM materials WHERE id=?",args:[materialId]});return json({ok:true});
       }
       const b=await body(req),name=clean(b.name);if(!name)fail("Укажите название материала");
@@ -356,6 +379,31 @@ async function api(req:Request,url:URL){
         const fields=await buildRun(tx,b,runId);
         await tx.execute({sql:"UPDATE production_runs SET product_id=?,output_quantity=?,note=? WHERE id=?",args:[fields.productId,fields.output,fields.note,runId]});
         await writeRunInputs(tx,runId,fields.inputs);
+      });
+      return json({ok:true});
+    }
+
+    // Stock added straight to the warehouse — no supplier, no money, no debt.
+    if(url.pathname==="/api/intake"&&method==="POST"){
+      const b=await body(req);
+      const id=await mutate(async tx=>{
+        const f=await buildIntake(tx,b);
+        const r=await tx.execute({sql:"INSERT INTO stock_intake(material_id,quantity,note) VALUES(?,?,?)",args:[f.materialId,f.quantity,f.note]});
+        return Number(r.lastInsertRowid);
+      });
+      return json({id},201);
+    }
+    const intakeId=idFrom(url,"intake");
+    if(intakeId&&(method==="PATCH"||method==="DELETE")){
+      if(!await one("SELECT id FROM stock_intake WHERE id=?",[intakeId]))fail("Поступление не найдено",404);
+      if(method==="DELETE"){
+        await mutate(t=>t.execute({sql:"DELETE FROM stock_intake WHERE id=?",args:[intakeId]}));
+        return json({ok:true});
+      }
+      const b=await body(req);
+      await mutate(async t=>{
+        const f=await buildIntake(t,b);
+        await t.execute({sql:"UPDATE stock_intake SET material_id=?,quantity=?,note=? WHERE id=?",args:[f.materialId,f.quantity,f.note,intakeId]});
       });
       return json({ok:true});
     }

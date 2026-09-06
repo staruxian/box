@@ -14,7 +14,7 @@ if (!url) { console.error("Не задан TURSO_DATABASE_URL."); process.exit(1
 const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
 
 // Children before parents.
-const TABLES = ["production_inputs", "production_runs", "transactions", "expenses", "products", "clients"];
+const TABLES = ["production_inputs", "production_runs", "stock_intake", "transactions", "expenses", "products", "clients"];
 const ALL = [...TABLES, "materials"];
 
 const counts: Record<string, number> = {};

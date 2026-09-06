@@ -7,24 +7,25 @@ import './people.css'
 type PersonType='client'|'supplier'
 type Person={id:number;name:string;phone:string;note:string;person_type:PersonType;balance_cents:number;transaction_count:number}
 type Product={id:number;name:string;sku:string;sale_count:number;units_sold:number;units_produced:number;stock_qty:number}
-type Material={id:number;code:string;name:string;unit:string;purchased_qty:number;consumed_qty:number;purchased_cents:number;stock_qty:number}
+type Material={id:number;code:string;name:string;unit:string;purchased_qty:number;intake_qty:number;consumed_qty:number;purchased_cents:number;stock_qty:number}
+type Intake={id:number;material_id:number;material_name:string;unit:string;quantity:number;note:string;created_at:string}
 type RunInput={run_id:number;material_id:number;material_name:string;unit:string;quantity:number}
 type Run={id:number;product_id:number;product_name:string|null;output_quantity:number;note:string;created_at:string;inputs:RunInput[]}
 type TxKind='sale'|'client_payment'|'purchase'|'supplier_payment'
 type Tx={id:number;client_id:number;product_id:number|null;material_id:number|null;kind:TxKind;quantity:number|null;amount_cents:number;unit_price_cents:number|null;note:string;created_at:string;person_name:string;person_type:PersonType;product_name:string|null;material_name:string|null}
 type Expense={id:number;amount_cents:number;comment:string;created_at:string}
-type Totals={my_balance_cents:number;client_debt_cents:number;supplier_debt_cents:number;sales_cents:number;client_payments_cents:number;purchases_cents:number;supplier_payments_cents:number;expenses_cents:number;material_stock_qty:number;finished_stock_qty:number;produced_qty:number;sold_qty:number}
-type Data={people:Person[];products:Product[];materials:Material[];production:Run[];transactions:Tx[];expenses:Expense[];totals:Totals}
-type Kind=TxKind|'person'|'product'|'material'|'expense'|'production'
-type EditRow={id:number;name?:string;phone?:string;note?:string;sku?:string;comment?:string;person_type?:PersonType;transaction_count?:number;client_id?:number;product_id?:number|null;material_id?:number|null;quantity?:number|null;amount_cents?:number;unit_price_cents?:number|null;output_quantity?:number;inputs?:RunInput[]}
-type OpenOpts={personId?:number;personType?:PersonType;productId?:number;edit?:EditRow}
+type Totals={my_balance_cents:number;client_debt_cents:number;supplier_debt_cents:number;sales_cents:number;client_payments_cents:number;purchases_cents:number;supplier_payments_cents:number;expenses_cents:number;intake_qty:number;material_stock_qty:number;finished_stock_qty:number;produced_qty:number;sold_qty:number}
+type Data={people:Person[];products:Product[];materials:Material[];production:Run[];transactions:Tx[];expenses:Expense[];intake:Intake[];totals:Totals}
+type Kind=TxKind|'person'|'product'|'material'|'expense'|'production'|'intake'
+type EditRow={id:number;quantity_in?:number;name?:string;phone?:string;note?:string;sku?:string;comment?:string;person_type?:PersonType;transaction_count?:number;client_id?:number;product_id?:number|null;material_id?:number|null;quantity?:number|null;amount_cents?:number;unit_price_cents?:number|null;output_quantity?:number;inputs?:RunInput[]}
+type OpenOpts={personId?:number;personType?:PersonType;productId?:number;materialId?:number;edit?:EditRow}
 type ModalState=OpenOpts&{kind:Kind}
 type Ask={title:string;copy:string;path:string;toast:string}
 type View='overview'|'inventory'|'production'|'clients'|'suppliers'|'products'|'expenses'|'ledger'
 
 const views:Record<View,{href:string;label:string;letter:string}>={overview:{href:'/',label:'Обзор',letter:'О'},inventory:{href:'/inventory',label:'Склад',letter:'С'},production:{href:'/production',label:'Производство',letter:'Пр'},clients:{href:'/clients',label:'Клиенты',letter:'К'},suppliers:{href:'/suppliers',label:'Поставщики',letter:'П'},products:{href:'/products',label:'Товары',letter:'Т'},expenses:{href:'/expenses',label:'Расходы',letter:'Р'},ledger:{href:'/ledger',label:'Журнал',letter:'Ж'}}
-const zero:Totals={my_balance_cents:0,client_debt_cents:0,supplier_debt_cents:0,sales_cents:0,client_payments_cents:0,purchases_cents:0,supplier_payments_cents:0,expenses_cents:0,material_stock_qty:0,finished_stock_qty:0,produced_qty:0,sold_qty:0}
-const empty:Data={people:[],products:[],materials:[],production:[],transactions:[],expenses:[],totals:zero}
+const zero:Totals={my_balance_cents:0,client_debt_cents:0,supplier_debt_cents:0,sales_cents:0,client_payments_cents:0,purchases_cents:0,supplier_payments_cents:0,expenses_cents:0,intake_qty:0,material_stock_qty:0,finished_stock_qty:0,produced_qty:0,sold_qty:0}
+const empty:Data={people:[],products:[],materials:[],production:[],transactions:[],expenses:[],intake:[],totals:zero}
 const money=(c:number)=>new Intl.NumberFormat('uz-UZ',{style:'currency',currency:'UZS',maximumFractionDigits:0}).format(c/100)
 const qty=(n:number)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(n||0)
 const kg=(n:number)=>`${qty(n)} кг`
@@ -37,6 +38,7 @@ const positiveKind=(k:TxKind)=>k==='client_payment'||k==='supplier_payment'
 const txDetail=(t:Tx)=>t.kind==='sale'?`${t.product_name||'Товар'} · ${kg(t.quantity||0)} × ${money(t.unit_price_cents||0)}/кг`:t.kind==='purchase'?`${t.material_name?`${t.material_name} · `:''}${kg(t.quantity||0)} × ${money(t.unit_price_cents||0)}/кг`:t.note||kindLabel(t.kind)
 const runDetail=(r:Run)=>r.inputs.length?r.inputs.map(i=>`${i.material_name} ${kg(i.quantity)}`).join(' · '):r.note||'Без расхода материалов'
 const txAsk=(t:Tx):Ask=>({title:'Удалить операцию?',copy:`${kindLabel(t.kind)} · ${t.person_name} · ${money(t.amount_cents)} · ${date(t.created_at)} Баланс и остатки пересчитаются.`,path:`/api/transactions/${t.id}`,toast:'Операция удалена'})
+const intakeAsk=(a:Intake):Ask=>({title:'Удалить поступление?',copy:`${a.material_name} ${kg(a.quantity)} уйдёт со склада.`,path:`/api/intake/${a.id}`,toast:'Поступление удалено'})
 const runAsk=(r:Run):Ask=>({title:'Удалить партию?',copy:`${kg(r.output_quantity)} готовой продукции вернётся со склада, сырьё (${runDetail(r)}) вернётся на склад.`,path:`/api/production/${r.id}`,toast:'Партия удалена'})
 async function send(path:string,payload?:unknown,method='POST'){
  const r=await fetch(path,{method,...(payload===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})})
@@ -90,8 +92,9 @@ function DebtPanel({title,people,href,empty}:{title:string;people:Person[];href:
 
 export function Inventory(){
  const {data,open,ask}=useLedger()
- return <div className="profile-page"><section className="material-grid">{data.materials.map(m=><article className="material-card" key={m.id}><div className="material-head"><div className={`material-icon ${m.code}`}>{m.name.slice(0,1)}</div><RowActions onEdit={()=>open('material',{edit:m})} onDelete={()=>ask({title:'Удалить материал?',copy:`«${m.name}» исчезнет из склада и форм закупки.`,path:`/api/materials/${m.id}`,toast:'Материал удалён'})}/></div><span>{m.name.toUpperCase()}</span><strong className={m.stock_qty>0?'':'red'}>{kg(m.stock_qty)}</strong><p>Закуплено {kg(m.purchased_qty)} · В производство {kg(m.consumed_qty)}</p><small>На закупку: {money(m.purchased_cents)}</small></article>)}
+ return <div className="profile-page"><section className="material-grid">{data.materials.map(m=><article className="material-card" key={m.id}><div className="material-head"><div className={`material-icon ${m.code}`}>{m.name.slice(0,1)}</div><RowActions onEdit={()=>open('material',{edit:m})} onDelete={()=>ask({title:'Удалить материал?',copy:`«${m.name}» исчезнет из склада и форм закупки.`,path:`/api/materials/${m.id}`,toast:'Материал удалён'})}/></div><span>{m.name.toUpperCase()}</span><strong className={m.stock_qty>0?'':'red'}>{kg(m.stock_qty)}</strong><p>Закуплено {kg(m.purchased_qty)}{m.intake_qty>0?` · Добавлено ${kg(m.intake_qty)}`:''} · В производство {kg(m.consumed_qty)}</p><small>На закупку: {money(m.purchased_cents)}</small><button className="stock-add" onClick={()=>open('intake',{materialId:m.id})}>＋ Пополнить склад</button></article>)}
  <button className="add-card" onClick={()=>open('material')}>＋<span>Добавить материал</span></button></section>
+ {data.intake.length>0&&<section className="page-panel"><div className="table-toolbar"><div><h2>Поступления без поставщика <span>{data.intake.length}</span></h2><p className="subtitle">Добавлено напрямую: <b>{kg(data.totals.intake_qty)}</b> — без долга и оплаты.</p></div></div><div className="rows">{data.intake.map(a=><div className="tx-row" key={a.id}><div className="tx-icon intake">＋</div><div className="grow"><b>{a.material_name}{a.note?` · ${a.note}`:''}</b><small>{date(a.created_at)}</small></div><strong className="green">+{kg(a.quantity)}</strong><RowActions onEdit={()=>open('intake',{edit:a})} onDelete={()=>ask(intakeAsk(a))}/></div>)}</div></section>}
  <section className="page-panel"><div className="table-toolbar"><div><h2>Готовая продукция <span>{data.products.length}</span></h2><p className="subtitle">Всего на складе: <b>{kg(data.totals.finished_stock_qty)}</b></p></div><div className="toolbar-actions"><button className="secondary small" onClick={()=>open('purchase')}>＋ Закупка сырья</button><button className="primary small" onClick={()=>open('production')}>＋ Новая партия</button></div></div>
  {data.products.length?<div className="rows">{data.products.map(p=><div className="tx-row" key={p.id}><div className="tx-icon production">▣</div><div className="grow"><b>{p.name}</b><small>Произведено {kg(p.units_produced)} · Продано {kg(p.units_sold)}</small></div><strong className={p.stock_qty>0?'green':'muted'}>{kg(p.stock_qty)}</strong><RowActions onEdit={()=>open('product',{edit:p})} onDelete={()=>ask({title:'Удалить товар?',copy:`«${p.name}» исчезнет из каталога.`,path:`/api/products/${p.id}`,toast:'Товар удалён'})}/></div>)}</div>:<Empty title="Товаров пока нет" copy="Добавьте товар в каталог, чтобы записывать выпуск и продажи." action="Добавить товар" onClick={()=>open('product')}/>}</section></div>
 }
@@ -132,11 +135,14 @@ export function Ledger(){
  const items=useMemo(()=>[
   ...data.transactions.map(t=>({type:'transaction' as const,id:`t-${t.id}`,created_at:t.created_at,search:`${kindLabel(t.kind)} ${t.person_name} ${t.product_name||''} ${t.material_name||''} ${t.note}`,tx:t})),
   ...data.production.map(r=>({type:'production' as const,id:`r-${r.id}`,created_at:r.created_at,search:`производство партия ${r.product_name||''} ${r.note} ${r.inputs.map(i=>i.material_name).join(' ')}`,run:r})),
+  ...data.intake.map(a=>({type:'intake' as const,id:`a-${a.id}`,created_at:a.created_at,search:`поступление склад ${a.material_name} ${a.note}`,intake:a})),
   ...data.expenses.map(e=>({type:'expense' as const,id:`e-${e.id}`,created_at:e.created_at,search:`расход expense ${e.comment}`,expense:e}))
- ].filter(item=>item.search.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>new Date(b.created_at.replace(' ','T')+'Z').getTime()-new Date(a.created_at.replace(' ','T')+'Z').getTime()),[data.transactions,data.production,data.expenses,q])
+ ].filter(item=>item.search.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>new Date(b.created_at.replace(' ','T')+'Z').getTime()-new Date(a.created_at.replace(' ','T')+'Z').getTime()),[data.transactions,data.production,data.intake,data.expenses,q])
  return <section className="page-panel"><div className="table-toolbar"><h2>Все операции <span>{items.length}</span></h2><input className="search" placeholder="Поиск…" value={q} onChange={e=>setQ(e.target.value)}/></div>{items.length?<div className="ledger-table"><div className="table-head"><span>ТИП</span><span>ЧЕЛОВЕК</span><span>ДЕТАЛИ</span><span>ДАТА</span><span>СУММА</span><span/></div>
  {items.map(item=>item.type==='expense'
   ?<div className="table-row" key={item.id}><span><em className="expense">Расход</em></span><b>—</b><span>{item.expense.comment||'Дополнительный расход'}</span><span>{date(item.expense.created_at)}</span><strong className="red">−{money(item.expense.amount_cents)}</strong><RowActions onEdit={()=>open('expense',{edit:item.expense})} onDelete={()=>ask({title:'Удалить расход?',copy:`${item.expense.comment||'Расход'} · ${money(item.expense.amount_cents)}.`,path:`/api/expenses/${item.expense.id}`,toast:'Расход удалён'})}/></div>
+  :item.type==='intake'
+  ?<div className="table-row" key={item.id}><span><em className="intake">Поступление</em></span><b>—</b><span>{item.intake.material_name}{item.intake.note?` · ${item.intake.note}`:''}</span><span>{date(item.intake.created_at)}</span><strong className="green">+{kg(item.intake.quantity)}</strong><RowActions onEdit={()=>open('intake',{edit:item.intake})} onDelete={()=>ask(intakeAsk(item.intake))}/></div>
   :item.type==='production'
   ?<div className="table-row" key={item.id}><span><em className="production">Партия</em></span><b>{item.run.product_name||'—'}</b><span>{runDetail(item.run)}</span><span>{date(item.run.created_at)}</span><strong className="green">+{kg(item.run.output_quantity)}</strong><RowActions onEdit={()=>open('production',{edit:item.run})} onDelete={()=>ask(runAsk(item.run))}/></div>
   :<div className="table-row" key={item.id}><span><em className={item.tx.kind}>{kindLabel(item.tx.kind)}</em></span><b>{item.tx.person_name}</b><span>{txDetail(item.tx)}</span><span>{date(item.tx.created_at)}</span><strong className={positiveKind(item.tx.kind)?'green':'red'}>{positiveKind(item.tx.kind)?'+':'−'}{money(item.tx.amount_cents)}</strong><RowActions onEdit={()=>open(item.tx.kind,{edit:item.tx})} onDelete={()=>ask(txAsk(item.tx))}/></div>)}</div>:<div className="empty"><p>Операций пока нет.</p></div>}</section>
@@ -159,7 +165,8 @@ function Modal({state,people,products,materials,close,done}:{state:ModalState;pe
  const [amount,setAmount]=useState(row?.amount_cents!=null&&kind!=='sale'&&kind!=='purchase'?String(row.amount_cents/100):'')
  const [output,setOutput]=useState(row?.output_quantity!=null?String(row.output_quantity):'')
  const [productId,setProductId]=useState(row?.product_id?String(row.product_id):state.productId?String(state.productId):products.length===1?String(products[0].id):'')
- const [materialId,setMaterialId]=useState(row?.material_id?String(row.material_id):'')
+ const [materialId,setMaterialId]=useState(row?.material_id?String(row.material_id):state.materialId?String(state.materialId):'')
+ const [intakeQty,setIntakeQty]=useState(kind==='intake'&&row?.quantity!=null?String(row.quantity):'')
  const [used,setUsed]=useState<Record<number,string>>(row?.inputs?Object.fromEntries(row.inputs.map(i=>[i.material_id,String(i.quantity)])):{})
  const requiredType:PersonType=kind==='sale'||kind==='client_payment'?'client':'supplier',available=people.filter(p=>p.person_type===requiredType)
  const preset=row?.client_id?String(row.client_id):personId?String(personId):''
@@ -170,6 +177,8 @@ function Modal({state,people,products,materials,close,done}:{state:ModalState;pe
  const ownUse=(id:number)=>kind==='production'&&row?.inputs?(row.inputs.find(i=>i.material_id===id)?.quantity??0):0
  const availableOf=(m:Material)=>m.stock_qty+ownUse(m.id)
  const saleQty=num(qtyIn),saleTotal=saleQty>0&&num(unit)>0?Math.round(toCents(num(unit))*saleQty):0,purchaseTotal=num(weight)>0&&num(perKg)>0?Math.round(toCents(num(perKg))*num(weight)):0
+ const intakeMaterial=materials.find(m=>String(m.id)===materialId)
+ const ownIntake=kind==='intake'&&row?.quantity!=null&&row.material_id===Number(materialId)?row.quantity:0
  const overSell=kind==='sale'&&!!product&&saleQty>stock+1e-9
  const shortages=materials.filter(m=>num(used[m.id])>availableOf(m)+1e-9)
  const usedTotal=materials.reduce((s,m)=>s+num(used[m.id]),0)
@@ -179,21 +188,23 @@ function Modal({state,people,products,materials,close,done}:{state:ModalState;pe
   :kind==='material'?(editing?'Изменить материал':'Новый материал')
   :kind==='expense'?(editing?'Изменить расход':'Новый расход')
   :kind==='production'?(editing?'Изменить партию':'Новая партия')
+  :kind==='intake'?(editing?'Изменить поступление':'Пополнить склад')
   :`${editing?'Изменить: ':''}${({sale:'Продажа клиенту',client_payment:'Оплата от клиента',purchase:'Закупка сырья',supplier_payment:'Оплата поставщику'} as Record<TxKind,string>)[kind as TxKind]}`
- const endpoint=kind==='person'?'/api/people':kind==='product'?'/api/products':kind==='material'?'/api/materials':kind==='expense'?'/api/expenses':kind==='production'?'/api/production':'/api/transactions'
+ const endpoint=kind==='person'?'/api/people':kind==='product'?'/api/products':kind==='material'?'/api/materials':kind==='expense'?'/api/expenses':kind==='production'?'/api/production':kind==='intake'?'/api/intake':'/api/transactions'
  async function submit(e:React.FormEvent<HTMLFormElement>){
   e.preventDefault();setBusy(true);setError('')
   const v=Object.fromEntries(new FormData(e.currentTarget)),path=editing?`${endpoint}/${row?.id}`:endpoint,method=editing?'PATCH':'POST'
   try{
    if(kind==='person')await send(path,{...v,personType:v.personType||personType},method)
    else if(kind==='product'||kind==='material'||kind==='expense')await send(path,v,method)
+   else if(kind==='intake')await send(path,{materialId:Number(materialId),quantity:num(intakeQty),note:v.note},method)
    else if(kind==='production')await send(path,{productId:Number(productId),output:num(output),note:v.note,inputs:materials.map(m=>({materialId:m.id,quantity:num(used[m.id])})).filter(i=>i.quantity>0)},method)
    else await send(path,{kind,personId:Number(v.personId),productId:productId?Number(productId):undefined,materialId:materialId?Number(materialId):undefined,quantity:v.quantity?num(v.quantity):undefined,amount:Number(v.amount),unitPrice:v.unitPrice?num(v.unitPrice):undefined,note:v.note},method)
-   await done(editing?'Изменения сохранены':kind==='person'?'Профиль добавлен':kind==='product'?'Товар добавлен':kind==='material'?'Материал добавлен':kind==='expense'?'Расход добавлен':kind==='production'?'Партия записана':'Операция записана')
+   await done(editing?'Изменения сохранены':kind==='person'?'Профиль добавлен':kind==='product'?'Товар добавлен':kind==='material'?'Материал добавлен':kind==='expense'?'Расход добавлен':kind==='production'?'Партия записана':kind==='intake'?'Склад пополнен':'Операция записана')
   }catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить')}finally{setBusy(false)}
  }
- const copy=editing?'Остатки и балансы пересчитаются после сохранения.':kind==='expense'?'Сумма сразу уменьшит ваш баланс.':kind==='sale'?'Продать можно не больше, чем есть на складе.':kind==='purchase'?'Сырьё придёт на склад и создаст долг перед поставщиком.':kind==='production'?'Сырьё спишется со склада, готовая продукция придёт на склад.':kind==='material'?'Материал появится на складе и в форме закупки.':kind==='client_payment'?'Оплата клиента уменьшает его долг и увеличивает ваш баланс.':kind==='supplier_payment'?'Ваша оплата уменьшает долг перед поставщиком.':'Укажите основные данные.'
- const blocked=busy||overSell||(kind==='production'&&(!productId||shortages.length>0||usedTotal<=0||num(output)<=0))||(kind==='sale'&&(!available.length||!products.length))||((kind==='purchase'||kind==='client_payment'||kind==='supplier_payment')&&!available.length)||(kind==='purchase'&&!materials.length)
+ const copy=editing?'Остатки и балансы пересчитаются после сохранения.':kind==='expense'?'Сумма сразу уменьшит ваш баланс.':kind==='sale'?'Продать можно не больше, чем есть на складе.':kind==='purchase'?'Сырьё придёт на склад и создаст долг перед поставщиком.':kind==='production'?'Сырьё спишется со склада, готовая продукция придёт на склад.':kind==='intake'?'Остаток вырастет сразу. Поставщик не нужен, долг и оплата не создаются.':kind==='material'?'Материал появится на складе и в форме закупки.':kind==='client_payment'?'Оплата клиента уменьшает его долг и увеличивает ваш баланс.':kind==='supplier_payment'?'Ваша оплата уменьшает долг перед поставщиком.':'Укажите основные данные.'
+ const blocked=busy||overSell||(kind==='production'&&(!productId||shortages.length>0||usedTotal<=0||num(output)<=0))||(kind==='sale'&&(!available.length||!products.length))||((kind==='purchase'||kind==='client_payment'||kind==='supplier_payment')&&!available.length)||(kind==='purchase'&&!materials.length)||(kind==='intake'&&(!materialId||num(intakeQty)<=0))
  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}><div className="modal"><button className="close" onClick={close}>×</button><p className="eyebrow">{editing?'ИЗМЕНЕНИЕ':'НОВАЯ ЗАПИСЬ'}</p><h2>{title}</h2><p className="modal-copy">{copy}</p><form onSubmit={submit}>
  {kind==='person'?<><label>Имя<input name="name" autoFocus required defaultValue={row?.name??''} placeholder={personType==='supplier'?'Название поставщика':'Имя клиента'}/></label><label>Телефон <span>необязательно</span><input name="phone" defaultValue={row?.phone??''} placeholder="+998 90 123-45-67"/></label><label>Заметка <span>необязательно</span><textarea name="note" defaultValue={row?.note??''}/></label>{editing&&(row?.transaction_count?<p className="hint">Тип: <b>{personType==='supplier'?'Поставщик':'Клиент'}</b> — нельзя изменить, есть операции ({row.transaction_count}).</p>:<label>Тип<select name="personType" defaultValue={personType}><option value="client">Клиент</option><option value="supplier">Поставщик</option></select></label>)}</>
  :kind==='product'?<><label>Название товара<input name="name" autoFocus required defaultValue={row?.name??''} placeholder="Картон"/></label><label>Артикул <span>необязательно</span><input name="sku" defaultValue={row?.sku??''}/></label></>
@@ -204,6 +215,10 @@ function Modal({state,people,products,materials,close,done}:{state:ModalState;pe
   <label>Выпуск картона, кг<input type="number" min="0.01" step="0.01" value={output} onChange={e=>setOutput(e.target.value)} required placeholder="0"/></label>
   {num(output)>0&&usedTotal>0&&<p className="hint">Из <b>{kg(usedTotal)}</b> сырья получено <b>{kg(num(output))}</b> · выход {Math.round(num(output)/usedTotal*100)}%</p>}
   <label>Заметка <span>необязательно</span><input name="note" defaultValue={row?.note??''}/></label></>
+ :kind==='intake'?<><label>Материал<select value={materialId} onChange={e=>setMaterialId(e.target.value)} required><option value="" disabled>Выберите материал</option>{materials.map(m=><option value={m.id} key={m.id}>{m.name} · на складе {kg(m.stock_qty)}</option>)}</select></label>
+  <label>Сколько добавить, кг<input type="number" min="0.01" step="0.01" autoFocus value={intakeQty} onChange={e=>setIntakeQty(e.target.value)} required placeholder="0"/></label>
+  {intakeMaterial&&num(intakeQty)>0&&<p className="hint">Станет: <b>{kg(intakeMaterial.stock_qty-ownIntake+num(intakeQty))}</b> — сейчас {kg(intakeMaterial.stock_qty)}</p>}
+  <label>Заметка <span>необязательно</span><input name="note" defaultValue={row?.note??''} placeholder="Откуда поступило"/></label></>
  :<><label>{requiredType==='client'?'Клиент':'Поставщик'}<select name="personId" required defaultValue={preset}><option value="" disabled>Выберите</option>{available.map(p=><option value={p.id} key={p.id}>{p.name} · долг {money(Math.max(0,-p.balance_cents))}</option>)}</select></label>
   {kind==='sale'&&<><label>Товар<select value={productId} onChange={e=>setProductId(e.target.value)} required><option value="" disabled>Выберите товар</option>{products.map(p=><option value={p.id} key={p.id}>{p.name} · на складе {kg(p.stock_qty)}</option>)}</select></label><div className="form-pair"><label className={overSell?'over':''}>Вес, кг {product&&<span>в наличии {kg(stock)}</span>}<input name="quantity" type="number" min="0.01" step="0.01" value={qtyIn} onChange={e=>setQtyIn(e.target.value)} required/></label><label>Цена за кг<input name="amount" type="number" min="1" step="1" value={unit} onChange={e=>setUnit(e.target.value)} required/></label></div>{overSell&&<p className="error">Недостаточно на складе: нужно {kg(saleQty)}, в наличии {kg(stock)}</p>}{saleTotal>0&&!overSell&&<p className="hint">Итого: <b>{money(saleTotal)}</b></p>}</>}
   {kind==='purchase'&&<><label>Материал<select value={materialId} onChange={e=>setMaterialId(e.target.value)} required><option value="" disabled>Выберите материал</option>{materials.map(m=><option value={m.id} key={m.id}>{m.name} · на складе {kg(m.stock_qty)}</option>)}</select></label><div className="form-pair"><label>Вес, кг<input name="quantity" type="number" min="0.01" step="0.01" value={weight} onChange={e=>setWeight(e.target.value)} required/></label><label>Цена за кг<input name="unitPrice" type="number" min="1" step="1" value={perKg} onChange={e=>setPerKg(e.target.value)} required/></label></div><label>Итого <span>автоматически</span><input name="amount" readOnly required value={purchaseTotal?purchaseTotal/100:''}/></label>{purchaseTotal>0&&<p className="hint">Итого: <b>{money(purchaseTotal)}</b></p>}</>}
