@@ -87,11 +87,13 @@ const SCHEMA=`
   CREATE INDEX IF NOT EXISTS idx_inputs_run ON production_inputs(run_id);
   CREATE INDEX IF NOT EXISTS idx_inputs_material ON production_inputs(material_id);
 `;
-const SEED:Array<[string,string,number]>=[["clay","Глина",1],["color","Краситель",2],["makulatura","Макулатура",3]];
+const SEED:Array<[string,string,number]>=[["kraxmal","Крахмал",1],["color","Краситель",2],["makulatura","Макулатура",3]];
 
 async function setup(){
   await db.execute("PRAGMA foreign_keys=ON");
   await db.executeMultiple(SCHEMA);
+  // Renamed in place so existing stock, purchases and batch inputs keep pointing at the same row.
+  await db.execute("UPDATE materials SET code='kraxmal',name='Крахмал' WHERE code='clay'");
   await db.batch(SEED.map(([code,name,order])=>({sql:"INSERT OR IGNORE INTO materials(code,name,unit,sort_order) VALUES(?,?,'кг',?)",args:[code,name,order] as InArgs})),"write");
 }
 
