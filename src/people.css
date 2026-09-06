@@ -80,3 +80,9 @@ label.over > span { color: #b54a3c; }
 .primary.danger { background: #b54a3c; border-color: #b54a3c; color: #fff !important; }
 .primary.danger:hover { background: #a2402f; }
 .modal.narrow { max-width: 420px; }
+
+/* Stock added without a supplier */
+.stock-add { width: 100%; margin-top: 15px; border: 1px solid #dcdfd0; background: #fbfcf7; color: #5a7040; border-radius: 9px; height: 34px; font-size: 12px; font-weight: 700; transition: border-color .15s, background .15s; }
+.stock-add:hover { border-color: #9fb27a; background: #f3f7e7; }
+.tx-icon.intake { background: #e2f0d3; color: #568038; font-weight: 700; }
+.table-row em.intake { background: #e4f0d7; color: #4e7836; }
