@@ -1,4 +1,4 @@
-// Web build: pure HTTP, so this runs unchanged on Bun locally and on Vercel Edge in production.
+// Web build: pure HTTP with no native binary, so this runs unchanged on Bun locally and on Vercel.
 import { createClient, type InArgs, type ResultSet, type Transaction } from "@libsql/client/web";
 
 const url = process.env.TURSO_DATABASE_URL;
