@@ -9,12 +9,13 @@
 // The import ends in .js, not .ts: Vercel typechecks this file with its own tsconfig, which has no
 // allowImportingTsExtensions. TypeScript and esbuild both resolve it back to the .ts source.
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ensureSchema, handleApi } from "../lib/ledger.js";
 
 // Classic (req, res) signature: the launcher always supports it, unlike the named web-handler exports.
 // The platform helpers may already have parsed the body, so prefer req.body over re-reading the stream.
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   try {
+    // Dynamic import: lib/ledger throws at load without Turso env, and a static import would turn that into an opaque FUNCTION_INVOCATION_FAILED.
+    const { ensureSchema, handleApi } = await import("../lib/ledger.js");
     await ensureSchema();
     const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "localhost"}`);
     let body: string | undefined;
